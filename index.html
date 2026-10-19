@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Core 處理核心 | 科技感介面</title>
-    <!-- 引入所有依賴套件 -->
+    <title>PDF Core 處理核心 | 科技感介面 (動態頁數偵測)</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <style>
-        /* 基礎暗色宇宙背景 */
         body { 
             font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
             max-width: 700px; margin: 40px auto; padding: 20px; 
@@ -22,7 +20,6 @@
         h2 { text-align: center; color: #FFFFFF; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
         h2 span { color: #00F0FF; }
 
-        /* 科技感毛玻璃上傳區塊 */
         .upload-section { 
             margin-bottom: 20px; 
             background: rgba(15, 23, 42, 0.4);
@@ -34,7 +31,6 @@
             position: relative;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 240, 255, 0.05);
         }
-        /* 拖曳高亮特效 (霓虹發光) */
         .upload-section.dragover {
             background: rgba(15, 23, 42, 0.8);
             border-color: #00F0FF;
@@ -47,12 +43,10 @@
         .upload-subtitle { font-size: 14px; color: #94A3B8; }
         #pdfInput { display: none; }
         
-        /* 列表容器 */
         .file-list-container { margin-top: 10px; text-align: left; padding: 0 20px;}
         .list-header { color: #00F0FF; font-size: 14px; margin-bottom: 10px; letter-spacing: 1px; }
         #fileList { list-style: none; padding: 0; margin: 0; }
         
-        /* 單一檔案項目 (暗色半透明) */
         .sortable-item { 
             display: flex; align-items: center; padding: 10px 12px; margin-bottom: 8px; 
             background: rgba(255, 255, 255, 0.03); 
@@ -70,11 +64,11 @@
         @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
         
         .file-name { flex-grow: 1; font-size: 14px; word-break: break-all; color: #E2E8F0; }
-        .remove-btn { background: none; border: none; color: #FF3366; cursor: pointer; font-size: 16px; padding: 5px; margin-left: 10px; transition: text-shadow 0.2s; }
+        .page-badge { font-size: 11px; background: rgba(0, 240, 255, 0.2); border: 1px solid rgba(0, 240, 255, 0.5); color: #00F0FF; padding: 2px 6px; border-radius: 12px; margin-right: 10px; white-space: nowrap; }
+        .remove-btn { background: none; border: none; color: #FF3366; cursor: pointer; font-size: 16px; padding: 5px; margin-left: 5px; transition: text-shadow 0.2s; }
         .remove-btn:hover { text-shadow: 0 0 10px rgba(255, 51, 102, 0.6); }
         .sortable-ghost { opacity: 0.3; background: rgba(0, 240, 255, 0.1); border: 1px dashed #00F0FF; }
         
-        /* 控制面板區塊 */
         .settings-panel { 
             margin: 25px 20px 15px 20px; padding: 15px; 
             background: rgba(0, 0, 0, 0.2); 
@@ -83,30 +77,23 @@
         }
         .settings-panel label { color: #CBD5E1; }
         .settings-panel input[type="number"] { 
-            width: 50px; padding: 6px; margin: 0 8px; 
+            width: 60px; padding: 6px; margin: 0 8px; 
             background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(0, 240, 255, 0.3); 
             border-radius: 4px; text-align: center; color: #00F0FF; font-weight: bold;
             outline: none; transition: border-color 0.2s;
         }
         .settings-panel input[type="number"]:focus { border-color: #00F0FF; box-shadow: 0 0 8px rgba(0, 240, 255, 0.3); }
         
-        /* 漸層科技發光按鈕 */
         .button-group { display: flex; gap: 15px; justify-content: center; margin-top: 25px; flex-wrap: wrap; padding-bottom: 25px;}
         button.action-btn { 
             padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; 
             font-size: 15px; font-weight: 600; letter-spacing: 1px; color: white;
             transition: all 0.3s ease; text-transform: uppercase;
         }
-        .btn-split { 
-            background: linear-gradient(135deg, #0052D4, #4364F7); 
-            box-shadow: 0 4px 15px rgba(67, 100, 247, 0.3); 
-        }
+        .btn-split { background: linear-gradient(135deg, #0052D4, #4364F7); box-shadow: 0 4px 15px rgba(67, 100, 247, 0.3); }
         .btn-split:hover:not(:disabled) { box-shadow: 0 0 20px rgba(67, 100, 247, 0.6); transform: translateY(-2px); }
         
-        .btn-merge { 
-            background: linear-gradient(135deg, #8E2DE2, #4A00E0); 
-            box-shadow: 0 4px 15px rgba(142, 45, 226, 0.3); 
-        }
+        .btn-merge { background: linear-gradient(135deg, #8E2DE2, #4A00E0); box-shadow: 0 4px 15px rgba(142, 45, 226, 0.3); }
         .btn-merge:hover:not(:disabled) { box-shadow: 0 0 20px rgba(142, 45, 226, 0.6); transform: translateY(-2px); }
         
         button.action-btn:disabled { background: #334155; box-shadow: none; cursor: not-allowed; color: #94A3B8; transform: none; }
@@ -124,13 +111,13 @@
     </style>
 </head>
 <body>
-    <h2>PDF 處理核心 <span>v1.0</span></h2>
+    <h2>PDF 處理核心 <span>v1.1</span></h2>
     
     <div class="upload-section" id="dropZone">
         <input type="file" id="pdfInput" accept="application/pdf" multiple>
         <label for="pdfInput" class="upload-label">
             <div class="upload-icon">⎘</div>
-            <div class="upload-title">點擊載入檔案，或拖曳至此處</div>
+            <div class="upload-title">點擊載入檔案，或拖曳至系統終端</div>
             <div class="upload-subtitle">INITIALIZE MULTIPLE FILES SECURELY</div>
         </label>
         
@@ -145,7 +132,7 @@
                 擷取範圍：[ 起始 <input type="number" id="startPage" min="1" placeholder="1"> ]  
                 → [ 終點 <input type="number" id="endPage" min="1" placeholder="Max"> ]
             </label>
-            <div style="font-size: 12px; color: #64748B; margin-top: 8px;">* 參數空白將自動捕捉全檔 / 合併模式將覆寫此設定</div>
+            <div id="pageRangeHint" style="font-size: 12px; color: #64748B; margin-top: 8px;">* 參數空白將自動捕捉全檔 / 合併模式將覆寫此設定</div>
         </div>
 
         <div class="button-group">
@@ -166,10 +153,57 @@
         const outputDiv = document.getElementById('output');
         const splitBtn = document.getElementById('splitBtn');
         const mergeBtn = document.getElementById('mergeBtn');
+        
+        // 抓取頁碼輸入框與提示元素
+        const startPageInput = document.getElementById('startPage');
+        const endPageInput = document.getElementById('endPage');
+        const pageRangeHint = document.getElementById('pageRangeHint');
+        
         const { PDFDocument } = PDFLib;
 
         let selectedFiles = [];
         let sortableInstance = null;
+
+        // --- 防呆：監聽輸入框，不允許超過當前最大頁數 ---
+        function enforceMaxPageLimit(e) {
+            const max = parseInt(e.target.getAttribute('max'));
+            if (max && parseInt(e.target.value) > max) {
+                e.target.value = max; // 強制改回最大值
+            }
+        }
+        startPageInput.addEventListener('input', enforceMaxPageLimit);
+        endPageInput.addEventListener('input', enforceMaxPageLimit);
+
+        // --- 動態更新頁碼上限 ---
+        function updatePageRangeLimits() {
+            if (selectedFiles.length === 0) {
+                endPageInput.removeAttribute('max');
+                endPageInput.placeholder = 'Max';
+                startPageInput.removeAttribute('max');
+                pageRangeHint.innerText = '* 參數空白將自動捕捉全檔 / 合併模式將覆寫此設定';
+                return;
+            }
+
+            let globalMaxPages = 0;
+            // 找出所有已載入檔案中的最大頁數
+            selectedFiles.forEach(item => {
+                if (item.numPages && item.numPages > globalMaxPages) {
+                    globalMaxPages = item.numPages;
+                }
+            });
+
+            if (globalMaxPages > 0) {
+                startPageInput.setAttribute('max', globalMaxPages);
+                endPageInput.setAttribute('max', globalMaxPages);
+                endPageInput.placeholder = globalMaxPages; // 更新提示文字
+
+                // 若目前使用者輸入的值已經超過新算出的最大值，直接降下來
+                if (parseInt(endPageInput.value) > globalMaxPages) endPageInput.value = globalMaxPages;
+                if (parseInt(startPageInput.value) > globalMaxPages) startPageInput.value = globalMaxPages;
+
+                pageRangeHint.innerHTML = `<span style="color: #00F0FF;">* 當前序列最大頁數為 ${globalMaxPages} 頁。</span> 系統已鎖定防護上限。`;
+            }
+        }
 
         function handleNewFiles(files) {
             const newFiles = Array.from(files);
@@ -183,7 +217,8 @@
             pdfFiles.forEach(file => {
                 selectedFiles.push({
                     id: 'doc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-                    file: file
+                    file: file,
+                    numPages: null // 初始化，等待解析
                 });
             });
             
@@ -200,9 +235,7 @@
             document.body.addEventListener(eventName, preventDefaults, false);
         });
 
-        function preventDefaults (e) {
-            e.preventDefault(); e.stopPropagation();
-        }
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
 
         ['dragenter', 'dragover'].forEach(eventName => {
             dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
@@ -226,6 +259,7 @@
             } else {
                 fileListContainer.style.display = 'none';
             }
+            updatePageRangeLimits(); // 檔案變動時重新計算上限
         }
 
         function renderFileList() {
@@ -242,6 +276,7 @@
                         <span class="loading-text">SYNC...</span>
                     </div>
                     <span class="file-name">${item.file.name}</span>
+                    <span class="page-badge" id="badge-${item.id}">解析中</span>
                     <button class="remove-btn" onclick="removeFile('${item.id}')" title="刪除檔案">✖</button>
                 `;
                 fileList.appendChild(li);
@@ -267,6 +302,14 @@
                 const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
                 const pdf = await loadingTask.promise;
                 
+                // --- 重點更新：取得該檔案的總頁數 ---
+                item.numPages = pdf.numPages;
+                updatePageRangeLimits(); // 讀到頁數後更新 UI 上限
+                
+                // 更新檔案列表上的頁數徽章
+                const badge = document.getElementById(`badge-${item.id}`);
+                if(badge) badge.innerText = `${item.numPages} 頁`;
+
                 const page = await pdf.getPage(1);
                 const viewport = page.getViewport({ scale: 1 });
                 const scale = 80 / viewport.width;
@@ -287,6 +330,8 @@
             } catch (error) {
                 const container = document.getElementById(`thumb-container-${item.id}`);
                 if (container) container.innerHTML = '<span class="loading-text" style="color:#FF3366">ERROR</span>';
+                const badge = document.getElementById(`badge-${item.id}`);
+                if(badge) { badge.innerText = '錯誤'; badge.style.color = '#FF3366'; badge.style.borderColor = '#FF3366'; }
             }
         }
 
