@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF 工具箱 (拖曳上傳、預覽、排序)</title>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; max-width: 680px; margin: 40px auto; padding: 20px; color: #333; }
+        
+        /* 拖曳上傳區塊樣式 */
+        .upload-section { 
+            margin-bottom: 20px; 
+            border: 2px dashed #bbb; 
+            border-radius: 12px; 
+            text-align: center; 
+            background-color: #fcfcfc; 
+            transition: all 0.2s ease-in-out;
+            position: relative;
+        }
+        /* 當檔案拖曳到上方時的高亮效果 */
+        .upload-section.dragover {
+            background-color: #e6f7ff;
+            border-color: #007bff;
+        }
+        .upload-label { 
+            display: block; 
+            cursor: pointer; 
+            padding: 40px 20px;
+        }
+        .upload-icon { font-size: 48px; color: #ccc; margin-bottom: 10px; transition: color 0.2s; }
+        .upload-section.dragover .upload-icon { color: #007bff; }
+        .upload-title { font-size: 18px; font-weight: bold; margin-bottom: 5px; color: #444; }
+        .upload-subtitle { font-size: 14px; color: #888; }
+        /* 隱藏原生的 input */
+        #pdfInput { display: none; }
+        
+        .file-list-container { margin-top: 20px; text-align: left; padding: 0 15px;}
+        #fileList { list-style: none; padding: 0; margin: 10px 0 0 0; }
+        .sortable-item { 
+            display: flex; align-items: center; padding: 10px 12px; margin-bottom: 8px; 
+            background-color: #fff; border: 1px solid #ddd; border-radius: 6px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow 0.2s;
+        }
+        .sortable-item:hover { box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .drag-handle { cursor: grab; margin-right: 12px; color: #999; font-size: 20px; padding: 0 5px; user-select: none; }
+        .drag-handle:active { cursor: grabbing; }
+        
+        .thumbnail-container { width: 45px; height: 60px; margin-right: 15px; display: flex; justify-content: center; align-items: center; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; overflow: hidden; }
+        .pdf-thumbnail { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .loading-text { font-size: 10px; color: #888; }
+        
+        .file-name { flex-grow: 1; font-size: 14px; word-break: break-all; }
+        .remove-btn { background: none; border: none; color: #dc3545; cursor: pointer; font-size: 16px; padding: 5px; margin-left: 10px; border-radius: 4px; }
+        .remove-btn:hover { background-color: #ffe6e6; }
+        .sortable-ghost { opacity: 0.4; background-color: #f0f8ff; border: 1px dashed #007bff; }
+        
+        .settings-panel { margin: 25px 15px 15px 15px; padding: 15px; background-color: #f8f9fa; border-radius: 6px; text-align: left; border: 1px solid #e9ecef; }
+        .settings-panel input[type="number"] { width: 60px; padding: 5px; margin: 0 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center; }
+        .button-group { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; padding-bottom: 20px;}
+        button.action-btn { padding: 12px 24px; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background-color 0.2s; }
+        .btn-split { background-color: #007bff; }
+        .btn-split:hover { background-color: #0056b3; }
+        .btn-merge { background-color: #6f42c1; }
+        .btn-merge:hover { background-color: #59339d; }
+        button.action-btn:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .download-btn { display: inline-block; margin-top: 15px; padding: 15px 30px; background-color: #28a745; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 18px; text-align: center; }
+        .download-btn:hover { background-color: #218838; }
+        #status { margin-top: 15px; font-size: 15px; color: #555; text-align: center;}
+    </style>
+</head>
+<body>
+    <h2 style="text-align: center;">PDF 瑞士刀：預覽、排序、分拆與合併</h2>
+    
+    <div class="upload-section" id="dropZone">
+        <!-- 隱藏的 Input，改由 Label 觸發 -->
+        <input type="file" id="pdfInput" accept="application/pdf" multiple>
+        <label for="pdfInput" class="upload-label">
+            <div class="upload-icon">📄</div>
+            <div class="upload-title">點擊選擇檔案，或將 PDF 拖曳至此處</div>
+            <div class="upload-subtitle">支援一次上傳多個檔案，並可自由拖曳調整順序</div>
+        </label>
+        
+        <div class="file-list-container" id="fileListContainer" style="display: none;">
+            <strong>📋 已選取檔案 (按住 ☰ 拖曳順序，點 ❌ 移除)：</strong>
+            <ul id="fileList"></ul>
+        </div>
+        
+        <div class="settings-panel">
+            <strong>⚙️ 分拆設定 (僅適用於分拆功能)：</strong><br><br>
+            <label>
+                擷取區間：從第 <input type="number" id="startPage" min="1" placeholder="1"> 頁 
+                到第 <input type="number" id="endPage" min="1" placeholder="末"> 頁
+            </label>
+            <div style="font-size: 13px; color: #888; margin-top: 5px;">（空白表示處理全檔。合併功能會自動忽略此設定）</div>
+        </div>
+
+        <div class="button-group">
+            <button id="splitBtn" class="action-btn btn-split">批次分拆並打包 (ZIP)</button>
+            <button id="mergeBtn" class="action-btn btn-merge">依畫面順序合併為單一 PDF</button>
+        </div>
+    </div>
+
+    <div id="output" style="text-align: center;"></div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+        const fileInput = document.getElementById('pdfInput');
+        const dropZone = document.getElementById('dropZone');
+        const fileList = document.getElementById('fileList');
+        const fileListContainer = document.getElementById('fileListContainer');
+        const outputDiv = document.getElementById('output');
+        const splitBtn = document.getElementById('splitBtn');
+        const mergeBtn = document.getElementById('mergeBtn');
+        const { PDFDocument } = PDFLib;
+
+        let selectedFiles = [];
+        let sortableInstance = null;
+
+        // --- 拖曳與選取檔案共用的處理邏輯 ---
+        function handleNewFiles(files) {
+            const newFiles = Array.from(files);
+            // 過濾確保只處理 PDF 檔案
+            const pdfFiles = newFiles.filter(file => file.type === 'application/pdf');
+            
+            if (pdfFiles.length === 0 && newFiles.length > 0) {
+                alert('請確認上傳的皆為 PDF 格式的檔案！');
+                return;
+            }
+
+            pdfFiles.forEach(file => {
+                selectedFiles.push({
+                    id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+                    file: file
+                });
+            });
+            
+            updateFileUI();
+        }
+
+        // 1. 傳統點擊選取
+        fileInput.addEventListener('change', (e) => {
+            handleNewFiles(e.target.files);
+            fileInput.value = ''; // 清空以允許重複選取
+        });
+
+        // 2. 攔截瀏覽器原生的拖曳預設行為（否則瀏覽器會直接打開 PDF 蓋掉網頁）
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // 3. 處理拖曳時的視覺回饋 (高亮框線與背景)
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.add('dragover');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.remove('dragover');
+            }, false);
+        });
+
+        // 4. 處理放開滑鼠 (Drop) 事件
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleNewFiles(files);
+        });
+
+        // --- 介面更新與預覽邏輯 ---
+        window.removeFile = function(id) {
+            selectedFiles = selectedFiles.filter(item => item.id !== id);
+            updateFileUI();
+        };
+
+        function updateFileUI() {
+            if (selectedFiles.length > 0) {
+                fileListContainer.style.display = 'block';
+                renderFileList();
+            } else {
+                fileListContainer.style.display = 'none';
+            }
+        }
+
+        function renderFileList() {
+            fileList.innerHTML = '';
+            
+            selectedFiles.forEach((item) => {
+                const li = document.createElement('li');
+                li.className = 'sortable-item';
+                li.dataset.id = item.id;
+                
+                li.innerHTML = `
+                    <span class="drag-handle" title="拖曳以調整順序">☰</span>
+                    <div class="thumbnail-container" id="thumb-container-${item.id}">
+                        <span class="loading-text">讀取中</span>
+                    </div>
+                    <span class="file-name">${item.file.name}</span>
+                    <button class="remove-btn" onclick="removeFile('${item.id}')" title="移除此檔案">❌</button>
+                `;
+                fileList.appendChild(li);
+
+                generateThumbnail(item);
+            });
+
+            if (sortableInstance) sortableInstance.destroy();
+
+            sortableInstance = new Sortable(fileList, {
+                animation: 150,
+                handle: '.drag-handle',
+                ghostClass: 'sortable-ghost',
+                onEnd: function (evt) {
+                    const movedItem = selectedFiles.splice(evt.oldIndex, 1)[0];
+                    selectedFiles.splice(evt.newIndex, 0, movedItem);
+                }
+            });
+        }
+
+        async function generateThumbnail(item) {
+            try {
+                const arrayBuffer = await item.file.arrayBuffer();
+                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                const pdf = await loadingTask.promise;
+                
+                const page = await pdf.getPage(1);
+                const viewport = page.getViewport({ scale: 1 });
+                const scale = 90 / viewport.width;
+                const scaledViewport = page.getViewport({ scale: scale });
+
+                const canvas = document.createElement('canvas');
+                canvas.className = 'pdf-thumbnail';
+                canvas.height = scaledViewport.height;
+                canvas.width = scaledViewport.width;
+
+                await page.render({
+                    canvasContext: canvas.getContext('2d'),
+                    viewport: scaledViewport
+                }).promise;
+
+                const container = document.getElementById(`thumb-container-${item.id}`);
+                if (container) {
+                    container.innerHTML = ''; 
+                    container.appendChild(canvas);
+                }
+            } catch (error) {
+                const container = document.getElementById(`thumb-container-${item.id}`);
+                if (container) container.innerHTML = '<span class="loading-text">無法預覽</span>';
+            }
+        }
+
+        function prepareProcess() {
+            if (selectedFiles.length === 0) {
+                alert('請至少選擇一個 PDF 檔案！');
+                return null;
+            }
+            splitBtn.disabled = true;
+            mergeBtn.disabled = true;
+            outputDiv.innerHTML = '<p id="status">⏳ 準備處理中...</p>';
+            return selectedFiles.map(item => item.file);
+        }
+
+        function restoreUI() {
+            splitBtn.disabled = false;
+            mergeBtn.disabled = false;
+        }
+
+        // --- 批次分拆 ---
+        splitBtn.addEventListener('click', async () => {
+            const files = prepareProcess();
+            if (!files) return;
+
+            const statusText = document.getElementById('status');
+            const startInput = document.getElementById('startPage').value;
+            const endInput = document.getElementById('endPage').value;
+
+            try {
+                const zip = new JSZip();
+                let totalProcessedPages = 0;
+
+                for (let f = 0; f < files.length; f++) {
+                    const file = files[f];
+                    const originalName = file.name.replace('.pdf', '');
+                    statusText.innerText = `⏳ 分拆中：第 ${f + 1} / ${files.length} 個檔案...`;
+                    
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdfDoc = await PDFDocument.load(arrayBuffer);
+                    const numberOfPages = pdfDoc.getPageCount();
+
+                    let startPage = parseInt(startInput) || 1;
+                    let endPage = parseInt(endInput) || numberOfPages;
+
+                    if (startPage < 1) startPage = 1;
+                    if (endPage > numberOfPages) endPage = numberOfPages;
+                    if (startPage > endPage) continue;
+
+                    const folder = zip.folder(originalName);
+
+                    for (let i = startPage - 1; i < endPage; i++) {
+                        const newPdfDoc = await PDFDocument.create();
+                        const [copiedPage] = await newPdfDoc.copyPages(pdfDoc, [i]);
+                        newPdfDoc.addPage(copiedPage);
+
+                        const pdfBytes = await newPdfDoc.save();
+                        folder.file(`${originalName}_第${i + 1}頁.pdf`, pdfBytes);
+                        totalProcessedPages++;
+                    }
+                }
+
+                if (totalProcessedPages === 0) throw new Error('沒有任何頁面被處理');
+
+                statusText.innerText = `⏳ 產生 ZIP 壓縮檔...`;
+                const zipContent = await zip.generateAsync({ type: 'blob' });
+                const zipUrl = URL.createObjectURL(zipContent);
+                
+                outputDiv.innerHTML = `
+                    <p>✅ 分拆完成！共處理 <strong>${files.length}</strong> 個檔案，分拆出 <strong>${totalProcessedPages}</strong> 頁。</p>
+                    <a href="${zipUrl}" download="批次分拆結果.zip" class="download-btn">📦 下載 ZIP 壓縮檔</a>
+                `;
+            } catch (error) {
+                outputDiv.innerHTML = `<p style="color: red;">❌ 處理失敗：${error.message}</p>`;
+            } finally {
+                restoreUI();
+            }
+        });
+
+        // --- 合併 PDF ---
+        mergeBtn.addEventListener('click', async () => {
+            const files = prepareProcess();
+            if (!files) return;
+
+            if (files.length < 2) {
+                alert('請至少選擇「兩個」以上的 PDF 檔案來進行合併！');
+                outputDiv.innerHTML = '';
+                restoreUI();
+                return;
+            }
+
+            const statusText = document.getElementById('status');
+
+            try {
+                const mergedPdf = await PDFDocument.create();
+                let totalMergedPages = 0;
+
+                for (let f = 0; f < files.length; f++) {
+                    const file = files[f];
+                    statusText.innerText = `⏳ 合併中：正在讀取第 ${f + 1} / ${files.length} 個檔案...`;
+                    
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdfDoc = await PDFDocument.load(arrayBuffer);
+                    
+                    const pageIndices = Array.from({ length: pdfDoc.getPageCount() }, (_, i) => i);
+                    const copiedPages = await mergedPdf.copyPages(pdfDoc, pageIndices);
+                    
+                    copiedPages.forEach((page) => {
+                        mergedPdf.addPage(page);
+                        totalMergedPages++;
+                    });
+                }
+
+                statusText.innerText = `⏳ 正在產生最終合併檔案...`;
+
+                const mergedPdfFile = await mergedPdf.save();
+                const blob = new Blob([mergedPdfFile], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                
+                outputDiv.innerHTML = `
+                    <p>✅ 合併成功！共整合了 <strong>${files.length}</strong> 個檔案，總計 <strong>${totalMergedPages}</strong> 頁。</p>
+                    <a href="${url}" download="合併後的檔案.pdf" class="download-btn" style="background-color: #6f42c1;">
+                        📄 下載合併後的 PDF
+                    </a>
+                `;
+            } catch (error) {
+                outputDiv.innerHTML = '<p style="color: red;">❌ 合併失敗，請確認檔案是否受密碼保護或損毀。</p>';
+            } finally {
+                restoreUI();
+            }
+        });
+    </script>
+</body>
+</html>
